@@ -1,154 +1,245 @@
-/*
- * libnss_ato.c
- *
- * Nss module to map every requested user to a fixed one.
- * Ato stands for "All To One"
- *
- * Copyright (c) Pietro Donatini (pietro.donatini@unibo.it), 2007.
- *
- * this product may be distributed under the terms of
- * the GNU Lesser Public License.
- *
- * version 0.2 
- * 
- * CHANGELOG:
- * strip end of line in reading /etc/libnss-ato 
- * suggested by Kyler Laird
- *
- * TODO:
- *
- * check bugs
- * 
- */
+//
+// Created by elias on 21.02.18.
+//
 
-#include <nss.h>
-#include <pwd.h>
-#include <shadow.h>
-#include <string.h>
-#include <stdio.h>
+#include "libnss-radius.h"
 
-/* for security reasons */
-#define MIN_UID_NUMBER   500
-#define MIN_GID_NUMBER   500
-#define CONF_FILE "/etc/libnss-ato.conf"
+struct passwd *readRadiusPasswd(FILE *fileDescriptor, size_t *size, size_t *nextUID){
 
-/*
- * the configuration /etc/libnss-ato.conf is just one line
- * with the local user data as in /etc/passwd. For example:
- * dona:x:1001:1001:P D ,,,:/home/dona:/bin/bash
- * Extra lines are comments (not processed).
- */
+    size_t passwdArrayBufferSize = 64;
+    size_t passwdArrayIndex = 0;
+    struct passwd* passwdArray = malloc(sizeof(struct passwd) * passwdArrayBufferSize);
 
-struct passwd *
-read_conf() 
-{
-	FILE *fd;
-	struct passwd *conf;
+    if(passwdArray == NULL)
+        return NULL;
 
-	if ((fd = fopen(CONF_FILE, "r")) == NULL ) {
-		return NULL;
-	}
-	conf = fgetpwent(fd);
+    while ( !feof(fileDescriptor) ){
 
-	if ( conf->pw_uid < MIN_UID_NUMBER )
-		conf->pw_uid = MIN_UID_NUMBER;
+        struct passwd *p = fgetpwent(fileDescriptor);
+        if(p == NULL)
+            break;
 
-	if ( conf->pw_gid < MIN_GID_NUMBER )
-		conf->pw_gid = MIN_GID_NUMBER;
+        if(passwdArrayIndex >= passwdArrayBufferSize){
 
-	fclose(fd);
-	return conf;
+            size_t oldBufferSize = passwdArrayBufferSize;
+            passwdArrayBufferSize += 64;
+
+            struct passwd* oldPasswd = passwdArray;
+            passwdArray = malloc(sizeof(struct passwd) * passwdArrayBufferSize);
+
+            if(passwdArray == NULL)
+                return NULL;
+
+            for(size_t i = 0; i < oldBufferSize; i++){
+                passwdArray[i] = oldPasswd[i];
+            }
+
+            free(oldPasswd);
+        }
+
+
+        struct passwd* curPasswd = &passwdArray[passwdArrayIndex++];
+
+        *curPasswd = *p;
+
+        curPasswd->pw_name = malloc(sizeof(char) * (strlen(p->pw_name) + 1));
+        strcpy(curPasswd->pw_name, p->pw_name);
+
+        curPasswd->pw_gecos = malloc(sizeof(char) * (strlen(p->pw_gecos) + 1));
+        strcpy(curPasswd->pw_gecos, p->pw_gecos);
+
+        curPasswd->pw_passwd = malloc(sizeof(char) * (strlen(p->pw_passwd) + 1));
+        strcpy(curPasswd->pw_passwd, p->pw_passwd);
+
+        curPasswd->pw_dir = malloc(sizeof(char) * (strlen(p->pw_dir) + 1));
+        strcpy(curPasswd->pw_dir, p->pw_dir);
+
+        curPasswd->pw_shell = malloc(sizeof(char) * (strlen(p->pw_shell) + 1));
+        strcpy(curPasswd->pw_shell, p->pw_shell);
+
+        if(p->pw_uid >= *nextUID)
+            *nextUID = p->pw_uid + 1;
+    }
+
+    *size = passwdArrayIndex;
+
+    return passwdArray;
 }
 
-/* 
- * Allocate some space from the nss static buffer.  The buffer and buflen
- * are the pointers passed in by the C library to the _nss_ntdom_*
- * functions. 
- *
- *  Taken from glibc 
- */
+static char *
+get_static(char **buffer, size_t *buflen, size_t len) {
+    char *result;
 
-static char * 
-get_static(char **buffer, size_t *buflen, int len)
-{
-	char *result;
-
-	/* Error check.  We return false if things aren't set up right, or
+    /* Error check.  We return false if things aren't set up right, or
          * there isn't enough buffer space left. */
 
-	if ((buffer == NULL) || (buflen == NULL) || (*buflen < len)) {
-		return NULL;
-	}
+    if ((buffer == NULL) || (buflen == NULL) || (*buflen < len)) {
+        return NULL;
+    }
 
-	/* Return an index into the static buffer */
+    /* Return an index into the static buffer */
 
-	result = *buffer;
-	*buffer += len;
-	*buflen -= len;
+    result = *buffer;
+    *buffer += len;
+    *buflen -= len;
 
-	return result;
+    return result;
 }
 
+int move_str(char **dst, const char *src, char *buffer, size_t buflen){
 
-enum nss_status
-_nss_ato_getpwnam_r( const char *name, 
-	   	     struct passwd *p, 
-	             char *buffer, 
-	             size_t buflen, 
-	             int *errnop)
-{
-	struct passwd *conf;
-  
-	if ((conf = read_conf()) == NULL) {
-		return NSS_STATUS_NOTFOUND;
-	}
+    /* If out of memory */
+    if ((*dst = get_static(&buffer, &buflen, (int) strlen(src) + 1)) == NULL) {
+        return 0;
+    }
 
-	*p = *conf;
-	
-	char *tmpName = "RADIUS-username";
+    strcpy(*dst, src);
 
-	/* If out of memory */
-	if ((p->pw_name = get_static(&buffer, &buflen, strlen(tmpName) + 1)) == NULL) {
-		return NSS_STATUS_TRYAGAIN;
-	}
-
-	/* pw_name stay as the name given */
-	strcpy(p->pw_name, tmpName);
-
-	if ((p->pw_passwd = get_static(&buffer, &buflen, strlen("x") + 1)) == NULL) {
-                return NSS_STATUS_TRYAGAIN;
-        }
-
-	strcpy(p->pw_passwd, "x");
-
-	return NSS_STATUS_SUCCESS;
+    return 1;
 }
 
-enum nss_status
-_nss_ato_getspnam_r( const char *name,
-                     struct spwd *s,
-                     char *buffer,
-                     size_t buflen,
-                     int *errnop)
-{
+enum nss_status _nss_ato_getpwnam_r( const char *name, struct passwd *p, char *buffer, size_t buflen, int *errnop) {
 
-        /* If out of memory */
-        if ((s->sp_namp = get_static(&buffer, &buflen, strlen(name) + 1)) == NULL) {
+    struct passwd *users;
+
+    FILE *fileDescriptor;
+
+    fileDescriptor = fopen(LIBNSS_RADIUS_PASSWD_FILE, "r");
+
+    if ( fileDescriptor == NULL ) {
+        return NSS_STATUS_NOTFOUND;
+    }
+
+    size_t usersSize = 0;
+    size_t nextUID = 0;
+
+    users = readRadiusPasswd(fileDescriptor, &usersSize, &nextUID);
+    if(users == NULL && usersSize != 0)
+        return NSS_STATUS_TRYAGAIN;
+
+    if(nextUID == 0)
+        nextUID = LIBNSS_RADIUS_MINUID;
+
+    fclose(fileDescriptor);
+
+    for( size_t i = 0; i < usersSize; i++ ){
+
+        if( strcmp(name, users[i].pw_name) == 0 ) {
+
+            p->pw_uid = users[i].pw_uid;
+            p->pw_gid = users[i].pw_gid;
+
+            if ( !move_str(&(p->pw_name), users[i].pw_name, buffer, buflen) )
                 return NSS_STATUS_TRYAGAIN;
-        }
-
-        strcpy(s->sp_namp, name);
-
-        if ((s->sp_pwdp = get_static(&buffer, &buflen, strlen("*") + 1)) == NULL) {
+            if ( !move_str(&(p->pw_passwd), users[i].pw_passwd, buffer, buflen) )
                 return NSS_STATUS_TRYAGAIN;
+            if ( !move_str(&(p->pw_gecos), users[i].pw_gecos, buffer, buflen) )
+                return NSS_STATUS_TRYAGAIN;
+            if ( !move_str(&(p->pw_dir), users[i].pw_dir, buffer, buflen) )
+                return NSS_STATUS_TRYAGAIN;
+            if ( !move_str(&(p->pw_shell), users[i].pw_shell, buffer, buflen) )
+                return NSS_STATUS_TRYAGAIN;
+
+            return NSS_STATUS_SUCCESS;
         }
+    }
 
-        strcpy(s->sp_pwdp, "*");
 
-        s->sp_lstchg = 13571;
-        s->sp_min    = 0;
-        s->sp_max    = 99999;
-        s->sp_warn   = 7;
+    uid_t uid = (uid_t) nextUID;
+    gid_t gid = (gid_t) nextUID;
+    char *pass = "x";
+    char *gecos = "";
+    char *dir = "/home/";
+    char *shell = "/bin/bash";
 
-        return NSS_STATUS_SUCCESS;
+    p->pw_uid = uid;
+    p->pw_gid = gid;
+
+    if ( !move_str(&(p->pw_name), name, buffer, buflen) )
+        return NSS_STATUS_TRYAGAIN;
+    if ( !move_str(&(p->pw_passwd), pass, buffer, buflen) )
+        return NSS_STATUS_TRYAGAIN;
+    if ( !move_str(&(p->pw_gecos), gecos, buffer, buflen) )
+        return NSS_STATUS_TRYAGAIN;
+    if ( !move_str(&(p->pw_dir), dir, buffer, buflen) )
+        return NSS_STATUS_TRYAGAIN;
+    if ( !move_str(&(p->pw_shell), shell, buffer, buflen) )
+        return NSS_STATUS_TRYAGAIN;
+
+    fileDescriptor = fopen(LIBNSS_RADIUS_PASSWD_FILE, "a");
+
+    fprintf(fileDescriptor, "%s:%s:%i:%i:%s:%s:%s\n", name, pass, uid, gid, gecos, dir, shell);
+
+    fclose(fileDescriptor);
+
+    return NSS_STATUS_SUCCESS;
+}
+
+enum nss_status _nss_ato_getpwuid_r( uid_t uid, struct passwd *p, char *buffer, size_t buflen, int *errnop) {
+
+    struct passwd *users;
+
+    FILE *fileDescriptor;
+
+    fileDescriptor = fopen(LIBNSS_RADIUS_PASSWD_FILE, "r");
+
+    if ( fileDescriptor == NULL ) {
+        return NSS_STATUS_NOTFOUND;
+    }
+
+    size_t usersSize = 0;
+    size_t nextUID = 0;
+
+    users = readRadiusPasswd(fileDescriptor, &usersSize, &nextUID);
+    if(users == NULL && usersSize != 0)
+        return NSS_STATUS_TRYAGAIN;
+
+    fclose(fileDescriptor);
+
+    for( size_t i = 0; i < usersSize; i++ ){
+
+        if( uid == users[i].pw_uid ) {
+
+            p->pw_uid = users[i].pw_uid;
+            p->pw_gid = users[i].pw_gid;
+
+            if ( !move_str(&(p->pw_name), users[i].pw_name, buffer, buflen) )
+                return NSS_STATUS_TRYAGAIN;
+            if ( !move_str(&(p->pw_passwd), users[i].pw_passwd, buffer, buflen) )
+                return NSS_STATUS_TRYAGAIN;
+            if ( !move_str(&(p->pw_gecos), users[i].pw_gecos, buffer, buflen) )
+                return NSS_STATUS_TRYAGAIN;
+            if ( !move_str(&(p->pw_dir), users[i].pw_dir, buffer, buflen) )
+                return NSS_STATUS_TRYAGAIN;
+            if ( !move_str(&(p->pw_shell), users[i].pw_shell, buffer, buflen) )
+                return NSS_STATUS_TRYAGAIN;
+
+            return NSS_STATUS_SUCCESS;
+        }
+    }
+
+    return NSS_STATUS_NOTFOUND;
+}
+
+enum nss_status _nss_ato_getspnam_r( const char *name, struct spwd *s, char *buffer, size_t buflen, int *errnop) {
+
+    /* If out of memory */
+    if ((s->sp_namp = get_static(&buffer, &buflen, strlen(name) + 1)) == NULL) {
+        return NSS_STATUS_TRYAGAIN;
+    }
+
+    strcpy(s->sp_namp, name);
+
+    if ((s->sp_pwdp = get_static(&buffer, &buflen, strlen("*") + 1)) == NULL) {
+        return NSS_STATUS_TRYAGAIN;
+    }
+
+    strcpy(s->sp_pwdp, "*");
+
+    s->sp_lstchg = 13571;
+    s->sp_min    = 0;
+    s->sp_max    = 99999;
+    s->sp_warn   = 7;
+
+    return NSS_STATUS_SUCCESS;
 }
