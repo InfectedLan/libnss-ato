@@ -1,8 +1,22 @@
 //
 // Created by elias on 21.02.18.
 //
+#include <stdio.h>
+#include <pwd.h>
+#include <stdlib.h>
 
-#include "libnss-radius.h"
+#include <nss.h>
+#include <pwd.h>
+#include <shadow.h>
+#include <string.h>
+
+/* for security reasons */
+#define MIN_UID_NUMBER   500
+#define MIN_GID_NUMBER   500
+#define CONF_FILE "/etc/libnss-ato.conf"
+
+#define LIBNSS_RADIUS_PASSWD_FILE "/etc/libnss-radius/passwd"
+#define LIBNSS_RADIUS_MINUID 2000
 
 struct passwd *readRadiusPasswd(FILE *fileDescriptor, size_t *size, size_t *nextUID){
 
