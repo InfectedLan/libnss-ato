@@ -1,87 +1,24 @@
 //
 // Created by elias on 21.02.18.
 //
+
 #include <stdio.h>
-#include <pwd.h>
 #include <stdlib.h>
+#include <syslog.h>
+#include <string.h>
 
 #include <nss.h>
 #include <pwd.h>
-#include <shadow.h>
-#include <string.h>
 
-/* for security reasons */
-#define MIN_UID_NUMBER   500
-#define MIN_GID_NUMBER   500
-#define CONF_FILE "/etc/libnss-radius.conf"
+#define TRUE 1
+#define FALSE 0
 
-#define LIBNSS_RADIUS_PASSWD_FILE "/etc/libnss-radius/passwd"
-#define LIBNSS_RADIUS_MINUID 2000
+#define NSS_FILE "/etc/libnss-radius.passwd"
+#define PAM_FILE "/etc/pam_radius_auth.users"
+#define BUFFER_SIZE 256
+#define UID_START 2000
 
-struct passwd *readRadiusPasswd(FILE *fileDescriptor, size_t *size, size_t *nextUID){
-
-    size_t passwdArrayBufferSize = 64;
-    size_t passwdArrayIndex = 0;
-    struct passwd* passwdArray = malloc(sizeof(struct passwd) * passwdArrayBufferSize);
-
-    if(passwdArray == NULL)
-        return NULL;
-
-    while ( !feof(fileDescriptor) ){
-
-        struct passwd *p = fgetpwent(fileDescriptor);
-        if(p == NULL)
-            break;
-
-        if(passwdArrayIndex >= passwdArrayBufferSize){
-
-            size_t oldBufferSize = passwdArrayBufferSize;
-            passwdArrayBufferSize += 64;
-
-            struct passwd* oldPasswd = passwdArray;
-            passwdArray = malloc(sizeof(struct passwd) * passwdArrayBufferSize);
-
-            if(passwdArray == NULL)
-                return NULL;
-
-            for(size_t i = 0; i < oldBufferSize; i++){
-                passwdArray[i] = oldPasswd[i];
-            }
-
-            free(oldPasswd);
-        }
-
-
-        struct passwd* curPasswd = &passwdArray[passwdArrayIndex++];
-
-        *curPasswd = *p;
-
-        curPasswd->pw_name = malloc(sizeof(char) * (strlen(p->pw_name) + 1));
-        strcpy(curPasswd->pw_name, p->pw_name);
-
-        curPasswd->pw_gecos = malloc(sizeof(char) * (strlen(p->pw_gecos) + 1));
-        strcpy(curPasswd->pw_gecos, p->pw_gecos);
-
-        curPasswd->pw_passwd = malloc(sizeof(char) * (strlen(p->pw_passwd) + 1));
-        strcpy(curPasswd->pw_passwd, p->pw_passwd);
-
-        curPasswd->pw_dir = malloc(sizeof(char) * (strlen(p->pw_dir) + 1));
-        strcpy(curPasswd->pw_dir, p->pw_dir);
-
-        curPasswd->pw_shell = malloc(sizeof(char) * (strlen(p->pw_shell) + 1));
-        strcpy(curPasswd->pw_shell, p->pw_shell);
-
-        if(p->pw_uid >= *nextUID)
-            *nextUID = p->pw_uid + 1;
-    }
-
-    *size = passwdArrayIndex;
-
-    return passwdArray;
-}
-
-static char *
-get_static(char **buffer, size_t *buflen, size_t len) {
+static char *get_static(char **buffer, size_t *buflen, size_t len) {
     char *result;
 
     /* Error check.  We return false if things aren't set up right, or
@@ -100,160 +37,161 @@ get_static(char **buffer, size_t *buflen, size_t len) {
     return result;
 }
 
-int move_str(char **dst, const char *src, char *buffer, size_t buflen){
+static int search_pam_file(const char *name){
+	
+	FILE *fp = fopen(PAM_FILE, "r");
 
-    /* If out of memory */
-    if ((*dst = get_static(&buffer, &buflen, (int) strlen(src) + 1)) == NULL) {
-        return 0;
-    }
+	if(fp == NULL){
+		return 0;
+	}
+	
+	
+	while(!feof(fp)){
 
-    strcpy(*dst, src);
+		char buffer[BUFFER_SIZE];
 
-    return 1;
+		if (fgets(buffer, BUFFER_SIZE, fp) == NULL){
+			return FALSE;
+		}
+		
+		size_t i = 0;
+		while (i < BUFFER_SIZE - 1 && buffer[i] != 10) {
+			i++;
+		}
+		buffer[i] = 0;
+		
+		if (strcmp(buffer, "") == 0) {
+			continue;
+		}
+
+		if (strcmp(buffer, name) == 0) {
+			fclose(fp);
+			return TRUE;
+		}
+	}	
+	
+	fclose(fp);
+	return FALSE;
 }
 
-enum nss_status _nss_radius_getpwnam_r( const char *name, struct passwd *p, char *buffer, size_t buflen, int *errnop) {
+static int search_nss_file(const char *name, struct passwd *result, int *nextUID){
 
-    struct passwd *users;
+	FILE *fp = fopen(NSS_FILE, "r");
 
-    FILE *fileDescriptor;
+	if(fp == NULL){
+		return FALSE;
+	}
 
-    fileDescriptor = fopen(LIBNSS_RADIUS_PASSWD_FILE, "r");
+	struct passwd *user;
+	int foundMatch = FALSE;
 
-    if ( fileDescriptor == NULL ) {
-        return NSS_STATUS_NOTFOUND;
-    }
+	*nextUID = UID_START;
 
-    size_t usersSize = 0;
-    size_t nextUID = 0;
+	while(user = fgetpwent(fp), user != NULL){
 
-    users = readRadiusPasswd(fileDescriptor, &usersSize, &nextUID);
-    if(users == NULL && usersSize != 0)
-        return NSS_STATUS_TRYAGAIN;
+		if(strcmp(name, user->pw_name) == 0){
+		
+			*result = *user;
 
-    if(nextUID == 0)
-        nextUID = LIBNSS_RADIUS_MINUID;
+			result->pw_name = malloc(strlen(user->pw_name) + 1);
+			strcpy(result->pw_name, user->pw_name);
 
-    fclose(fileDescriptor);
+			result->pw_passwd = malloc(strlen(user->pw_passwd) + 1);
+			strcpy(result->pw_passwd, user->pw_passwd);
 
-    for( size_t i = 0; i < usersSize; i++ ){
+			result->pw_gecos = malloc(strlen(user->pw_gecos) + 1);
+			strcpy(result->pw_gecos, user->pw_gecos);
 
-        if( strcmp(name, users[i].pw_name) == 0 ) {
+			result->pw_dir = malloc(strlen(user->pw_dir) + 1);
+			strcpy(result->pw_dir, user->pw_dir);
 
-            p->pw_uid = users[i].pw_uid;
-            p->pw_gid = users[i].pw_gid;
+			result->pw_shell = malloc(strlen(user->pw_shell) + 1);
+			strcpy(result->pw_shell, user->pw_shell);
 
-            if ( !move_str(&(p->pw_name), users[i].pw_name, buffer, buflen) )
-                return NSS_STATUS_TRYAGAIN;
-            if ( !move_str(&(p->pw_passwd), users[i].pw_passwd, buffer, buflen) )
-                return NSS_STATUS_TRYAGAIN;
-            if ( !move_str(&(p->pw_gecos), users[i].pw_gecos, buffer, buflen) )
-                return NSS_STATUS_TRYAGAIN;
-            if ( !move_str(&(p->pw_dir), users[i].pw_dir, buffer, buflen) )
-                return NSS_STATUS_TRYAGAIN;
-            if ( !move_str(&(p->pw_shell), users[i].pw_shell, buffer, buflen) )
-                return NSS_STATUS_TRYAGAIN;
+			foundMatch = TRUE;
+		}
 
-            return NSS_STATUS_SUCCESS;
-        }
-    }
+		*nextUID = user->pw_uid + 1;
+	}
 
-
-    uid_t uid = (uid_t) nextUID;
-    gid_t gid = (gid_t) nextUID;
-    char *pass = "x";
-    char *gecos = "";
-    char *dir = "/home/";
-    char *shell = "/bin/bash";
-
-    p->pw_uid = uid;
-    p->pw_gid = gid;
-
-    if ( !move_str(&(p->pw_name), name, buffer, buflen) )
-        return NSS_STATUS_TRYAGAIN;
-    if ( !move_str(&(p->pw_passwd), pass, buffer, buflen) )
-        return NSS_STATUS_TRYAGAIN;
-    if ( !move_str(&(p->pw_gecos), gecos, buffer, buflen) )
-        return NSS_STATUS_TRYAGAIN;
-    if ( !move_str(&(p->pw_dir), dir, buffer, buflen) )
-        return NSS_STATUS_TRYAGAIN;
-    if ( !move_str(&(p->pw_shell), shell, buffer, buflen) )
-        return NSS_STATUS_TRYAGAIN;
-
-    fileDescriptor = fopen(LIBNSS_RADIUS_PASSWD_FILE, "a");
-
-    fprintf(fileDescriptor, "%s:%s:%i:%i:%s:%s:%s\n", name, pass, uid, gid, gecos, dir, shell);
-
-    fclose(fileDescriptor);
-
-    return NSS_STATUS_SUCCESS;
+	fclose(fp);
+	return foundMatch;
 }
 
-enum nss_status _nss_radius_getpwuid_r( uid_t uid, struct passwd *p, char *buffer, size_t buflen, int *errnop) {
+static int moveMemory(char **ptr, char **buffer, size_t *buflen){
 
-    struct passwd *users;
+	char *charbuf = get_static(buffer, buflen, strlen(*ptr) + 1);
 
-    FILE *fileDescriptor;
+	if (charbuf == NULL){
+		return FALSE;
+	}
 
-    fileDescriptor = fopen(LIBNSS_RADIUS_PASSWD_FILE, "r");
+	strcpy(charbuf, *ptr);
 
-    if ( fileDescriptor == NULL ) {
-        return NSS_STATUS_NOTFOUND;
-    }
-
-    size_t usersSize = 0;
-    size_t nextUID = 0;
-
-    users = readRadiusPasswd(fileDescriptor, &usersSize, &nextUID);
-    if(users == NULL && usersSize != 0)
-        return NSS_STATUS_TRYAGAIN;
-
-    fclose(fileDescriptor);
-
-    for( size_t i = 0; i < usersSize; i++ ){
-
-        if( uid == users[i].pw_uid ) {
-
-            p->pw_uid = users[i].pw_uid;
-            p->pw_gid = users[i].pw_gid;
-
-            if ( !move_str(&(p->pw_name), users[i].pw_name, buffer, buflen) )
-                return NSS_STATUS_TRYAGAIN;
-            if ( !move_str(&(p->pw_passwd), users[i].pw_passwd, buffer, buflen) )
-                return NSS_STATUS_TRYAGAIN;
-            if ( !move_str(&(p->pw_gecos), users[i].pw_gecos, buffer, buflen) )
-                return NSS_STATUS_TRYAGAIN;
-            if ( !move_str(&(p->pw_dir), users[i].pw_dir, buffer, buflen) )
-                return NSS_STATUS_TRYAGAIN;
-            if ( !move_str(&(p->pw_shell), users[i].pw_shell, buffer, buflen) )
-                return NSS_STATUS_TRYAGAIN;
-
-            return NSS_STATUS_SUCCESS;
-        }
-    }
-
-    return NSS_STATUS_NOTFOUND;
+	*ptr = charbuf;
+	return TRUE;
 }
 
-enum nss_status _nss_radius_getspnam_r( const char *name, struct spwd *s, char *buffer, size_t buflen, int *errnop) {
+enum nss_status _nss_radius_getpwnam_r(const char *name, struct passwd *result_buf, char *buffer, size_t buflen, struct passwd **result) {
 
-    /* If out of memory */
-    if ((s->sp_namp = get_static(&buffer, &buflen, strlen(name) + 1)) == NULL) {
-        return NSS_STATUS_TRYAGAIN;
-    }
+	*result = NULL;
 
-    strcpy(s->sp_namp, name);
+	int nextUID;
 
-    if ((s->sp_pwdp = get_static(&buffer, &buflen, strlen("*") + 1)) == NULL) {
-        return NSS_STATUS_TRYAGAIN;
-    }
+	if (search_nss_file(name, result_buf, &nextUID)){
 
-    strcpy(s->sp_pwdp, "*");
+		syslog(LOG_AUTH, "Found user %s with UID:%i in nss file.\n", result_buf->pw_name, result_buf->pw_uid);
+		
+		if (!moveMemory(&result_buf->pw_name, &buffer, &buflen )  ||
+		    !moveMemory(&result_buf->pw_passwd, &buffer, &buflen )||
+		    !moveMemory(&result_buf->pw_gecos, &buffer, &buflen ) ||
+	 	    !moveMemory(&result_buf->pw_dir, &buffer, &buflen )   ||
+		    !moveMemory(&result_buf->pw_shell, &buffer, &buflen )){
 
-    s->sp_lstchg = 13571;
-    s->sp_min    = 0;
-    s->sp_max    = 99999;
-    s->sp_warn   = 7;
+			return NSS_STATUS_TRYAGAIN;
+		}
 
-    return NSS_STATUS_SUCCESS;
+		*result = result_buf;
+		return NSS_STATUS_SUCCESS;
+	}
+
+	if (search_pam_file(name)){
+
+		FILE *fp = fopen(NSS_FILE, "a");
+
+		if(fp == NULL){
+			syslog(LOG_AUTH, "Failed to open nss file\n");
+			return NSS_STATUS_NOTFOUND;
+		}
+		
+		fprintf(fp, "%s:x:%i:%i:,,,:/tmp:/bin/bash\n", name, nextUID, nextUID);
+
+		fclose(fp);
+
+		result_buf->pw_name = malloc(strlen(name) + 1);
+		strcpy(result_buf->pw_name, name);
+
+		result_buf->pw_uid = nextUID;
+		result_buf->pw_gid = nextUID;
+		result_buf->pw_passwd = "x";
+		result_buf->pw_gecos = "";
+		result_buf->pw_dir = "/tmp";
+		result_buf->pw_shell = "/bin/bash";
+
+		if (!moveMemory(&result_buf->pw_name, &buffer, &buflen )  ||
+		    !moveMemory(&result_buf->pw_passwd, &buffer, &buflen )||
+		    !moveMemory(&result_buf->pw_gecos, &buffer, &buflen ) ||
+	 	    !moveMemory(&result_buf->pw_dir, &buffer, &buflen )   ||
+		    !moveMemory(&result_buf->pw_shell, &buffer, &buflen )){
+			return NSS_STATUS_TRYAGAIN;
+		}
+		
+		syslog(LOG_AUTH, "Registered user %s\n", name);
+		
+		*result = result_buf;
+		return NSS_STATUS_SUCCESS;
+	}
+
+	syslog(LOG_AUTH, "Didnt find user %s in either pam or nss file\n", name);
+	return NSS_STATUS_NOTFOUND;
 }
