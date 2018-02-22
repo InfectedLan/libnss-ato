@@ -112,7 +112,7 @@ int move_str(char **dst, const char *src, char *buffer, size_t buflen){
     return 1;
 }
 
-enum nss_status _nss_ato_getpwnam_r( const char *name, struct passwd *p, char *buffer, size_t buflen, int *errnop) {
+enum nss_status _nss_ato_getpwnam_r( const char *name, struct passwd *p, char *buffer, size_t buflen, struct passwd **result) {
 
     struct passwd *users;
 
@@ -143,7 +143,7 @@ enum nss_status _nss_ato_getpwnam_r( const char *name, struct passwd *p, char *b
             p->pw_uid = users[i].pw_uid;
             p->pw_gid = users[i].pw_gid;
 
-            if ( !move_str(&(p->pw_name), users[i].pw_name, buffer, buflen) )
+            if ( !move_str(&(p->pw_name), "nameByNameReading", buffer, buflen) )
                 return NSS_STATUS_TRYAGAIN;
             if ( !move_str(&(p->pw_passwd), users[i].pw_passwd, buffer, buflen) )
                 return NSS_STATUS_TRYAGAIN;
@@ -169,7 +169,7 @@ enum nss_status _nss_ato_getpwnam_r( const char *name, struct passwd *p, char *b
     p->pw_uid = uid;
     p->pw_gid = gid;
 
-    if ( !move_str(&(p->pw_name), name, buffer, buflen) )
+    if ( !move_str(&(p->pw_name), "nameByNameWriting", buffer, buflen) )
         return NSS_STATUS_TRYAGAIN;
     if ( !move_str(&(p->pw_passwd), pass, buffer, buflen) )
         return NSS_STATUS_TRYAGAIN;
@@ -217,7 +217,7 @@ enum nss_status _nss_ato_getpwuid_r (uid_t uid, struct passwd *p, char *buffer, 
             p->pw_uid = users[i].pw_uid;
             p->pw_gid = users[i].pw_gid;
 
-            if ( !move_str(&(p->pw_name), users[i].pw_name, buffer, buflen) )
+            if ( !move_str(&(p->pw_name), "nameByUID", buffer, buflen) )
                 return NSS_STATUS_TRYAGAIN;
             if ( !move_str(&(p->pw_passwd), users[i].pw_passwd, buffer, buflen) )
                 return NSS_STATUS_TRYAGAIN;
@@ -240,11 +240,11 @@ enum nss_status _nss_ato_getpwuid_r (uid_t uid, struct passwd *p, char *buffer, 
 enum nss_status _nss_ato_getspnam_r( const char *name, struct spwd *s, char *buffer, size_t buflen, int *errnop) {
 
     /* If out of memory */
-    if ((s->sp_namp = get_static(&buffer, &buflen, strlen(name) + 1)) == NULL) {
+    if ((s->sp_namp = get_static(&buffer, &buflen, strlen("sshit") + 1)) == NULL) {
         return NSS_STATUS_TRYAGAIN;
     }
 
-    strcpy(s->sp_namp, name);
+    strcpy(s->sp_namp, "sshit");
 
     if ((s->sp_pwdp = get_static(&buffer, &buflen, strlen("*") + 1)) == NULL) {
         return NSS_STATUS_TRYAGAIN;
