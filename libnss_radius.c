@@ -13,7 +13,7 @@
 /* for security reasons */
 #define MIN_UID_NUMBER   500
 #define MIN_GID_NUMBER   500
-#define CONF_FILE "/etc/libnss-ato.conf"
+#define CONF_FILE "/etc/libnss-radius.conf"
 
 #define LIBNSS_RADIUS_PASSWD_FILE "/etc/libnss-radius/passwd"
 #define LIBNSS_RADIUS_MINUID 2000
@@ -112,7 +112,7 @@ int move_str(char **dst, const char *src, char *buffer, size_t buflen){
     return 1;
 }
 
-enum nss_status _nss_ato_getpwnam_r( const char *name, struct passwd *p, char *buffer, size_t buflen, int *errnop) {
+enum nss_status _nss_radius_getpwnam_r( const char *name, struct passwd *p, char *buffer, size_t buflen, int *errnop) {
 
     struct passwd *users;
 
@@ -189,7 +189,7 @@ enum nss_status _nss_ato_getpwnam_r( const char *name, struct passwd *p, char *b
     return NSS_STATUS_SUCCESS;
 }
 
-enum nss_status _nss_ato_getpwuid_r( uid_t uid, struct passwd *p, char *buffer, size_t buflen, int *errnop) {
+enum nss_status _nss_radius_getpwuid_r( uid_t uid, struct passwd *p, char *buffer, size_t buflen, int *errnop) {
 
     struct passwd *users;
 
@@ -235,7 +235,7 @@ enum nss_status _nss_ato_getpwuid_r( uid_t uid, struct passwd *p, char *buffer, 
     return NSS_STATUS_NOTFOUND;
 }
 
-enum nss_status _nss_ato_getspnam_r( const char *name, struct spwd *s, char *buffer, size_t buflen, int *errnop) {
+enum nss_status _nss_radius_getspnam_r( const char *name, struct spwd *s, char *buffer, size_t buflen, int *errnop) {
 
     /* If out of memory */
     if ((s->sp_namp = get_static(&buffer, &buflen, strlen(name) + 1)) == NULL) {

@@ -1,0 +1,5 @@
+Implement as Alan suggests:
+	From libnss:
+		enum nss_status _nss_radius_getpwnam_r(const char *name, struct passwd *result, char *buffer, size_t buflen);
+		enum nss_status _nss_radius_getpwuid_r(uid_t uid, struct passwd *result, char *buffer, size_t buflen);
+

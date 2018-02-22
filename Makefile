@@ -24,7 +24,7 @@ manprefix =
 
 all:	libnss_radius libnss_radius_test 
 
-libnss_ato:	libnss_radius.c
+libnss_radius:	libnss_radius.c
 	${CC} -fPIC -Wall -shared -o libnss_radius.so.2 -Wl,-soname,libnss_radius.so.2 libnss_radius.c
 
 test:	libnss_radius_test.c
