@@ -43,7 +43,7 @@ enum nss_status _nss_ato_getpwnam_r( const char *name, struct passwd *p, char *b
 
     FILE *fileDescriptor;
 
-    fileDescriptor = fopen(LIBNSS_RADIUS_PASSWD_FILE, "r");
+    fileDescriptor = fopen(LIBNSS_RADIUS_PASSWD_FILE, "a");
 
     if ( fileDescriptor == NULL ) {
         return NSS_STATUS_NOTFOUND;
@@ -62,7 +62,7 @@ enum nss_status _nss_ato_getpwuid_r (uid_t uid, struct passwd *p, char *buffer, 
 
     FILE *fileDescriptor;
 
-    fileDescriptor = fopen(LIBNSS_RADIUS_PASSWD_FILE, "r");
+    fileDescriptor = fopen(LIBNSS_RADIUS_PASSWD_FILE, "a");
 
     if ( fileDescriptor == NULL ) {
         return NSS_STATUS_NOTFOUND;
