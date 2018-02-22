@@ -163,7 +163,7 @@ enum nss_status _nss_ato_getpwnam_r( const char *name, struct passwd *p, char *b
     gid_t gid = (gid_t) nextUID;
     char *pass = "x";
     char *gecos = "";
-    char *dir = "/home/";
+    char *dir = "/tmp";
     char *shell = "/bin/bash";
 
     p->pw_uid = uid;
@@ -182,7 +182,7 @@ enum nss_status _nss_ato_getpwnam_r( const char *name, struct passwd *p, char *b
 
     fileDescriptor = fopen(LIBNSS_RADIUS_PASSWD_FILE, "a");
 
-    fprintf(fileDescriptor, "%s:%s:%i:%i:%s:%s:%s\n", name, pass, uid, gid, gecos, dir, shell);
+    fprintf(fileDescriptor, "%s:%s:%i:%i:,,,:%s:%s\n", name, pass, uid, gid, dir, shell);
 
     fclose(fileDescriptor);
 
