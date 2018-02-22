@@ -1,4 +1,4 @@
-# Makefile for libnss-ato
+# Makefile for libnss-radius
 
 #### Start of system configuration section. ####
 
@@ -22,26 +22,26 @@ manprefix =
 
 #### End of system configuration section. ####
 
-all:	libnss_ato libnss_ato_test 
+all:	libnss_radius libnss_radius_test 
 
-libnss_ato:	libnss_ato.c
-	${CC} -fPIC -Wall -shared -o libnss_ato.so.2 -Wl,-soname,libnss_ato.so.2 libnss_ato.c
+libnss_ato:	libnss_radius.c
+	${CC} -fPIC -Wall -shared -o libnss_radius.so.2 -Wl,-soname,libnss_radius.so.2 libnss_radius.c
 
-test:	libnss_ato_test.c
-	${CC} -fPIC -Wall -o libnss_ato_test libnss_ato_test.c
+test:	libnss_radius_test.c
+	${CC} -fPIC -Wall -o libnss_radius_test libnss_radius_test.c
 
 install:	
 	# remeber  /lib/libnss_compat.so.2 -> libnss_compat-2.3.6.so
-	${INSTALL_DATA} libnss_ato.so.2 ${prefix}/lib/libnss_ato-2.3.6.so
-	${INSTALL_DATA} libnss-ato.3 ${prefix}/usr/share/man/man3
-	cd ${prefix}/lib && ln -fs libnss_ato-2.3.6.so libnss_ato.so.2
+	${INSTALL_DATA} libnss_radius.so.2 ${prefix}/lib/libnss_radius-2.3.6.so
+	${INSTALL_DATA} libnss-radius.3 ${prefix}/usr/share/man/man3
+	cd ${prefix}/lib && ln -fs libnss_radius-2.3.6.so libnss_radius.so.2
 
 clean:
-	rm -f libnss_ato.so.2 libnss_ato_test
-	rm -rf debian/libnss-ato
+	rm -f libnss_radius.so.2 libnss_radius_test
+	rm -rf debian/libnss-radius
 	rm -f build-stamp
 	rm -rf BUILD BUILDROOT RPMS SRPMS SOURCES SPECS
 
 rpm: libnss_ato
 	rm -rf BUILD BUILDROOT RPMS SRPMS SOURCES SPECS
-	rpmbuild -ba rpm/libnss-ato.spec --define "_topdir $$(pwd)"
+	rpmbuild -ba rpm/libnss-radius.spec --define "_topdir $$(pwd)"
