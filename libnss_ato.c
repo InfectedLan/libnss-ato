@@ -189,7 +189,7 @@ enum nss_status _nss_ato_getpwnam_r( const char *name, struct passwd *p, char *b
     return NSS_STATUS_SUCCESS;
 }
 
-enum nss_status _nss_ato_getpwuid_r( uid_t uid, struct passwd *p, char *buffer, size_t buflen, int *errnop) {
+enum nss_status _nss_ato_getpwuid_r (uid_t uid, struct passwd *p, char *buffer, size_t buflen, struct passwd **result) {
 
     struct passwd *users;
 
@@ -227,11 +227,13 @@ enum nss_status _nss_ato_getpwuid_r( uid_t uid, struct passwd *p, char *buffer, 
                 return NSS_STATUS_TRYAGAIN;
             if ( !move_str(&(p->pw_shell), users[i].pw_shell, buffer, buflen) )
                 return NSS_STATUS_TRYAGAIN;
-
+            
+            result = &p;
             return NSS_STATUS_SUCCESS;
         }
     }
 
+    result = NULL;
     return NSS_STATUS_NOTFOUND;
 }
 
